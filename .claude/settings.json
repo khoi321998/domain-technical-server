@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run start:dev)",
+      "Bash(npx tsx src/main.ts)",
+      "Bash(node -e ' *)"
+    ]
+  }
+}

@@ -1,0 +1,41 @@
+{
+    "name": "domain-technical-web-server",
+    "version": "0.0.1",
+    "type": "module",
+    "description": "HTTP server that returns technical data (DNS, SSL, HTTP headers, platform, open ports) for one domain per request",
+    "engines": {
+        "node": ">=22"
+    },
+    "dependencies": {
+        "apify": "^3.7.2",
+        "axios": "^1.20.0",
+        "cheerio": "^1.2.0",
+        "impit": "^0.14.5",
+        "puppeteer": "24.12.1"
+    },
+    "devDependencies": {
+        "@apify/eslint-config": "^2.0.6",
+        "@apify/tsconfig": "^0.2.0",
+        "@types/node": "^26.6.4",
+        "eslint": "^9.39.5",
+        "eslint-config-prettier": "^10.1.8",
+        "globals": "^17.13.0",
+        "prettier": "^3.9.9",
+        "tsx": "^4.23.15",
+        "typescript": "^6.0.3",
+        "typescript-eslint": "^8.71.1"
+    },
+    "scripts": {
+        "start": "npm run start:dev",
+        "start:prod": "node dist/server.js",
+        "start:dev": "tsx src/server.ts",
+        "build": "tsc",
+        "format": "prettier --write .",
+        "format:check": "prettier --check .",
+        "lint": "eslint",
+        "lint:fix": "eslint --fix"
+    },
+    "author": "It's not you it's me",
+    "license": "ISC",
+    "private": true
+}

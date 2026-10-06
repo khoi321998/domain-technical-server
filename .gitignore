@@ -1,0 +1,18 @@
+# This file tells Git which files shouldn't be added to source control
+
+.DS_Store
+.idea
+.vscode
+.zed
+dist
+tsconfig.tsbuildinfo
+node_modules
+apify_storage
+storage
+
+# Server secrets (API_KEY, APIFY_PROXY_PASSWORD)
+*.env
+.env
+
+# Added by Apify CLI
+.venv

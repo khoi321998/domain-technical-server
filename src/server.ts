@@ -7,7 +7,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import type { ProxyConfiguration } from 'apify';
 import { Actor } from 'apify';
 
-import { closeBrowser, getBrowser } from './browser.js';
+import { browserSlotStats, closeBrowser, getBrowser, setMaxBrowserContexts } from './browser.js';
 import { analyzeDomain, normalizeUrl } from './domain.js';
 import { log, runWithJobPrefix } from './logger.js';
 
@@ -17,7 +17,7 @@ import { log, runWithJobPrefix } from './logger.js';
  *   POST /scrape  { "url": "https://...", "transactionId"?: "..." }  -> analysis + timing (requires header x-api-key)
  *   GET  /                                  -> health / status (no auth, for health checks)
  *
- * Env vars: API_KEY (required), PORT (8080), MAX_CONCURRENCY (4), MAX_QUEUE (100), MAX_FETCH_ATTEMPTS (5), HTTP_FIRST (true),
+ * Env vars: API_KEY (required), PORT (8080), MAX_CONCURRENCY (4), MAX_BROWSER_CONCURRENCY (8), MAX_QUEUE (100), MAX_FETCH_ATTEMPTS (5), HTTP_FIRST (true),
  * USE_APIFY_PROXY (false) + APIFY_PROXY_PASSWORD, APIFY_PROXY_GROUPS (comma-separated, default RESIDENTIAL).
  */
 
@@ -34,6 +34,9 @@ if (API_KEY.length < 16) throw new Error('Env var API_KEY is required and must b
 
 const PORT = intEnv('PORT', 8080);
 const MAX_CONCURRENCY = intEnv('MAX_CONCURRENCY', 4);
+// Chrome contexts open at once. Requests that fall back to Chrome wait for a slot beyond this (HTTP fetches don't).
+const MAX_BROWSER_CONCURRENCY = intEnv('MAX_BROWSER_CONCURRENCY', 8);
+setMaxBrowserContexts(MAX_BROWSER_CONCURRENCY);
 const MAX_QUEUE = intEnv('MAX_QUEUE', 100);
 const MAX_FETCH_ATTEMPTS = intEnv('MAX_FETCH_ATTEMPTS', 5);
 // Try a plain HTTP request (no browser) first and open the page in Chrome only when that is blocked or incomplete.
@@ -77,6 +80,12 @@ function releaseSlot() {
     const next = waiting.shift();
     if (next) next();
     else activeCount--;
+}
+
+/** Current load, for logs: requests, slots and Chrome slots. */
+function describeLoad(): string {
+    const chrome = browserSlotStats();
+    return `in progress: ${inProgress}, active: ${activeCount}/${MAX_CONCURRENCY}, chrome: ${chrome.open}/${chrome.max} (${chrome.waiting} waiting)`;
 }
 
 // --- Proxy: Apify is used only for its residential proxy (needs APIFY_PROXY_PASSWORD, no Actor.init). ---
@@ -198,13 +207,13 @@ async function handleScrape(req: IncomingMessage, res: ServerResponse) {
     const job: Job = { url, transactionId, enqueuedAt: Date.now() };
 
     if (inProgress >= MAX_QUEUE) {
-        log.warning(`Rejected ${describeJob(job)}: server busy (in progress: ${inProgress}, MAX_QUEUE=${MAX_QUEUE})`);
+        log.warning(`Rejected ${describeJob(job)}: server busy (${describeLoad()}, MAX_QUEUE=${MAX_QUEUE})`);
         sendFailed(res, 503, { url, error: `Server busy: ${inProgress} requests in progress (MAX_QUEUE=${MAX_QUEUE}).` });
         return;
     }
 
     inProgress++;
-    log.info(`Received ${describeJob(job)} (in progress: ${inProgress}, active: ${activeCount}/${MAX_CONCURRENCY})`);
+    log.info(`Received ${describeJob(job)} (${describeLoad()})`);
 
     let statusCode: number | null = null;
     let slotAcquired = false;
@@ -238,7 +247,7 @@ async function handleScrape(req: IncomingMessage, res: ServerResponse) {
 
 setInterval(() => {
     const rssMb = Math.round(process.memoryUsage().rss / 1024 / 1024);
-    log.info(`Memory: Node RSS ${rssMb} MB, in progress: ${inProgress}, active: ${activeCount}/${MAX_CONCURRENCY}`);
+    log.info(`Memory: Node RSS ${rssMb} MB, ${describeLoad()}`);
 }, MEMORY_LOG_INTERVAL_MS).unref();
 
 const server = createServer((req, res) => {
@@ -250,6 +259,7 @@ const server = createServer((req, res) => {
             maxConcurrency: MAX_CONCURRENCY,
             active: activeCount,
             inProgress,
+            chrome: browserSlotStats(),
         });
         return;
     }
@@ -278,6 +288,7 @@ server.listen(PORT, () => {
     log.info('Server config', {
         PORT,
         MAX_CONCURRENCY,
+        MAX_BROWSER_CONCURRENCY,
         MAX_QUEUE,
         MAX_FETCH_ATTEMPTS,
         HTTP_FIRST,

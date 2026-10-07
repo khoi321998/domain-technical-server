@@ -10,7 +10,7 @@ import * as cheerio from 'cheerio';
 import { Impit } from 'impit';
 import type { HTTPResponse } from 'puppeteer';
 
-import { getBrowser } from './browser.js';
+import { acquireBrowserSlot, browserSlotStats, getBrowser, releaseBrowserSlot } from './browser.js';
 import { jobLog } from './logger.js';
 
 type HeadersMap = Record<string, any>;
@@ -227,7 +227,22 @@ function isBlockedDomain(hostname: string): boolean {
     return BLOCKED_THIRD_PARTY_DOMAINS.some((d) => hostname === d || hostname.endsWith(`.${d}`));
 }
 
+/** Opens the page in Chrome once a Chrome slot is free (MAX_BROWSER_CONCURRENCY). */
 async function fetchWithPuppeteer(url: string, proxyUrl: string | null = null): Promise<FetchResult> {
+    const slots = browserSlotStats();
+    const mustWait = slots.open >= slots.max;
+    if (mustWait) jobLog.info(`Waiting for a Chrome slot (${slots.open}/${slots.max} in use, ${slots.waiting} already waiting)`);
+    const waitStart = Date.now();
+    await acquireBrowserSlot();
+    if (mustWait) jobLog.info(`Got a Chrome slot after ${((Date.now() - waitStart) / 1000).toFixed(1)}s`);
+    try {
+        return await fetchWithPuppeteerInSlot(url, proxyUrl);
+    } finally {
+        releaseBrowserSlot();
+    }
+}
+
+async function fetchWithPuppeteerInSlot(url: string, proxyUrl: string | null): Promise<FetchResult> {
 
     const headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'

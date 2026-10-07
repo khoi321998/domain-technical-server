@@ -4,7 +4,7 @@ A self-hosted HTTP server that analyzes one domain per request and returns its t
 
 The page itself is fetched through Apify's residential proxy: first with a plain HTTP request that impersonates Chrome ([impit](https://github.com/apify/impit)), and with headless Chrome (Puppeteer) only when that result is blocked or incomplete. Each further attempt uses a fresh IP while the page looks blocked. Apify is used only for that proxy; this is not an Apify Actor.
 
-One Chrome stays warm, so requests don't pay a cold start. `MAX_CONCURRENCY` requests run in parallel, the rest wait in a queue, and once `MAX_QUEUE` is reached the server returns `503`.
+One Chrome stays warm, so requests don't pay a cold start. `MAX_CONCURRENCY` requests run in parallel, the rest wait in a queue, and once `MAX_QUEUE` is reached the server returns `503`. Requests that fall back to Chrome also need one of `MAX_BROWSER_CONCURRENCY` Chrome slots and wait for one if all are in use, so memory stays bounded however many requests need Chrome.
 
 ## API
 
@@ -73,7 +73,7 @@ To run new code, rebuild and recreate the container: `docker rm -f dtws-server`,
 
 ### Production
 
-Recommended: 4 CPU / 4 GB, `MAX_CONCURRENCY=10`, `MAX_QUEUE=15`.
+Recommended: 4 CPU / 4 GB, `MAX_CONCURRENCY=30`, `MAX_BROWSER_CONCURRENCY=8`, `MAX_QUEUE=50`.
 
 ```bash
 docker run -d --name dtws-server \
@@ -97,6 +97,7 @@ docker run -d --name dtws-server \
 | `API_KEY` | required | Shared secret the caller sends in `x-api-key` (at least 16 characters). Generate with `openssl rand -hex 32` |
 | `PORT` | `8080` | HTTP port |
 | `MAX_CONCURRENCY` | `4` | Requests analyzed in parallel |
+| `MAX_BROWSER_CONCURRENCY` | `8` | Chrome contexts open at once. Requests that need Chrome beyond this wait for a slot (no `503`) |
 | `MAX_QUEUE` | `100` | Max requests running or waiting. Beyond this, requests get `503` |
 | `MAX_FETCH_ATTEMPTS` | `5` | Page fetch attempts, each with a fresh proxy IP, while the page looks blocked or fails |
 | `HTTP_FIRST` | `true` | Try a plain HTTP request before Chrome. `false` = always use Chrome |
